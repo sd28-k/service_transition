@@ -1,0 +1,46 @@
+// Inputs: vm (VC:VirtualMachine), adUsername (string), adPassword (SecureString)
+// Output: Logs installation status
+
+var result = "";
+
+// Check if VM is powered on
+if (vm.runtime.powerState.value !== "poweredOn") {
+    result += "❌ VM is not powered on.\n";
+    System.log(result);
+    return;
+} else {
+    result += "✅ VM is powered on.\n";
+}
+
+// Convert SecureString to Plaintext (⚠ Avoid logging this!)
+var passwordPlain = adPassword.getDecryptedValue();
+
+// ✅ Fixed PowerShell Script (No `var` keyword)
+var psScript = `
+$OS = Get-WmiObject Win32_OperatingSystem
+$Network = Test-NetConnection -ComputerName google.com -InformationLevel Quiet
+$Drivers = Get-WmiObject Win32_PnPEntity | Where-Object { $_.ConfigManagerErrorCode -ne 0 }
+
+$Checks = @{
+    OSVersion = $OS.Caption
+    OSBuild = $OS.BuildNumber
+    Network = if ($Network) { "Connected" } else { "No Internet" }
+    Drivers = if ($Drivers) { "Missing Drivers" } else { "All Drivers Installed" }
+}
+
+$Checks | ConvertTo-Json
+`;
+
+try {
+    // Open guest session using stored credentials
+    var session = vm.guest.createScriptSession(adUsername, passwordPlain);
+    var output = session.invokeScript(psScript);
+    session.close();
+
+    result += "✅ Windows Installation Check: \n" + output;
+} catch (e) {
+    result += "❌ Error executing PowerShell script: " + e;
+}
+
+// Securely log result without exposing credentials
+System.log(result);
